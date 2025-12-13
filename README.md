@@ -1,406 +1,379 @@
-# 🤖 SQL Agent - Intelligent Query Validator & Executor
+# AgentX: Enterprise SQL Agent Evaluation Framework
 
-An intelligent agent that validates SQL queries, executes them in a sandbox environment, and provides comprehensive analysis and summaries.
+> A next-generation evaluation framework for LLM-powered SQL and data-engineering agents that surpasses Spider 2.0 through enterprise-grade realism, structural anti-hallucination mechanisms, and first-class observability.
 
-## 🌟 Features
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-### 4-Step Validation Pipeline
-1. **🔒 Safety Check** - Blocks dangerous operations (DELETE, DROP, ALTER, etc.)
-2. **✅ Syntax Validation** - Ensures SQL is properly formatted
-3. **📋 Schema Validation** - Verifies tables and columns exist
-4. **🧠 Logic Optimization** - Checks query logic and optimizations
+---
 
-### Execution & Analysis
-- **Sandbox Execution** - Safe query execution with result limits
-- **Performance Metrics** - Execution time tracking
-- **Data Preview** - First 5 rows of results
-- **Intelligent Insights** - Automatic analysis and recommendations
-- **JSON Reports** - Exportable query reports
+## 🎯 Motivation
 
-## 🚀 Quick Start
+Existing SQL benchmarks have critical limitations:
 
-### 1. Start the Database
-```bash
-docker-compose up -d
+| Benchmark             | Limitation                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Spider 1.0 / BIRD** | Single SQL queries, small schemas (<50 columns), synthetic data, single dialect                                                      |
+| **Spider 2.0**        | Better realism (632 tasks, 6 dialects, dbt) but only ~21% success rate for SOTA agents; limited observability into _why_ agents fail |
+
+**AgentX** addresses these gaps with:
+
+- **Structural hallucination prevention** via ORM-powered schema grounding
+- **Multi-dimensional scoring** beyond binary pass/fail
+- **Automated error taxonomy** for systematic failure analysis
+- **Enterprise-scale schemas** (3,000+ columns, nested types, cross-database queries)
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           AGENTX FRAMEWORK                                    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      TASK ORCHESTRATOR                               │    │
+│  │  • Load task definitions • Initialize environments • Coordinate flow │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                 ORM INFRASTRUCTURE LAYER (SQLAlchemy)                │    │
+│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────────────┐    │    │
+│  │  │ DatabaseMgr   │  │ SchemaInspect │  │ FixtureLoader         │    │    │
+│  │  │ • Engines     │  │ • Tables      │  │ • ORM bulk insert     │    │    │
+│  │  │ • Dialects    │  │ • Columns     │  │ • Raw bulk fallback   │    │    │
+│  │  │ • Pooling     │  │ • Nested types│  │ • FK integrity        │    │    │
+│  │  └───────────────┘  └───────────────┘  └───────────────────────┘    │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│          ┌─────────────────────────┼─────────────────────────┐              │
+│          ▼                         ▼                         ▼              │
+│  ┌───────────────┐    ┌─────────────────────┐    ┌───────────────────┐      │
+│  │ AGENT SANDBOX │    │ HALLUCINATION       │    │ RESULT COMPARATOR │      │
+│  │ • Tool APIs   │    │ DETECTOR            │    │ • pd.read_sql()   │      │
+│  │ • GetSchema   │◄───│ • Column validator  │    │ • Multi-strategy  │      │
+│  │ • SampleRows  │    │ • Table validator   │    │   comparison      │      │
+│  │ • ValidateSQL │    │ • JOIN path verify  │    │                   │      │
+│  └───────────────┘    └─────────────────────┘    └───────────────────┘      │
+│          │                         ▲                         ▲              │
+│          ▼                         │                         │              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                   RAW SQL EVALUATION LAYER                           │    │
+│  │  • connection.execute(text(agent_sql)) — NO ORM ABSTRACTION          │    │
+│  │  • Query plan capture • Execution timing • Error classification      │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                    │                                         │
+│                                    ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  EVALUATION SCORER              │  LOGGING & ERROR TAXONOMY          │    │
+│  │  • Correctness • Hallucination  │  • Structured traces (JSONL)       │    │
+│  │  • Efficiency • Grounding       │  • Auto-classification             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Choose Your Interface
+---
 
-#### Option A: Web Interface (Recommended)
-```bash
-python3 agent_server.py
-```
-Then open: **http://localhost:5000**
+## 🔑 Key Design Principles
 
-#### Option B: Interactive CLI
-```bash
-python3 agent_cli.py
-```
+### 1. ORM for Infrastructure, Raw SQL for Evaluation
 
-#### Option C: Python API
 ```python
-from sql_agent import SQLAgent
+# ✅ ORM handles infrastructure
+engine = create_engine("snowflake://user:pass@account/db")
+inspector = inspect(engine)
+columns = inspector.get_columns("orders")  # Schema introspection
 
-agent = SQLAgent("postgresql://testuser:testpass@localhost:5432/testdb")
-result = agent.process_query("SELECT * FROM users")
-print(result)
+# ✅ Raw SQL for agent evaluation (no abstraction interference)
+with engine.connect() as conn:
+    result = conn.execute(text(agent_generated_sql))  # Verbatim execution
 ```
+
+### 2. Structural Hallucination Prevention
+
+```python
+class HallucinationDetector:
+    def validate(self, sql: str, schema: SchemaSnapshot) -> ValidationResult:
+        # Parse SQL AST → extract referenced identifiers
+        # Compare against introspected schema
+        # Flag phantom columns/tables/functions BEFORE execution
+```
+
+### 3. Multi-Dimensional Scoring
+
+| Metric                  | Description                              | Weight |
+| ----------------------- | ---------------------------------------- | ------ |
+| `correctness`           | Result matches expected output           | 40%    |
+| `hallucination_penalty` | Count of phantom identifiers             | 25%    |
+| `efficiency`            | Query cost / execution time              | 15%    |
+| `grounding_score`       | % of references validated against schema | 20%    |
+
+---
 
 ## 📁 Project Structure
 
 ```
-Hackathon/
-├── sql_agent.py          # Main agent class
-├── agent_server.py       # Flask web server
-├── agent_cli.py          # Interactive CLI
-├── agent_web.html        # Web interface
-├── hallucination.py      # Query validator
-├── schema.py             # Schema inspector
-├── test_hallucination.py # Unit tests
-├── test_with_db.py       # Integration tests
-├── docker-compose.yml    # PostgreSQL setup
-└── init.sql             # Sample database
+agentx/
+├── README.md
+├── pyproject.toml
+├── docker-compose.yml              # Multi-DB local environment
+│
+├── src/
+│   ├── agentx/
+│   │   ├── __init__.py
+│   │   │
+│   │   ├── core/                   # Core abstractions
+│   │   │   ├── task.py             # Task definition models
+│   │   │   ├── agent_interface.py  # Agent protocol/ABC
+│   │   │   └── config.py           # Framework configuration
+│   │   │
+│   │   ├── infrastructure/         # ORM Infrastructure Layer
+│   │   │   ├── database_manager.py # Multi-dialect engine management
+│   │   │   ├── schema_inspector.py # SQLAlchemy + INFORMATION_SCHEMA
+│   │   │   ├── fixture_loader.py   # Tiered bulk loading
+│   │   │   └── dialects/           # Dialect-specific extensions
+│   │   │       ├── bigquery.py
+│   │   │       ├── snowflake.py
+│   │   │       ├── postgres.py
+│   │   │       └── duckdb.py
+│   │   │
+│   │   ├── sandbox/                # Agent Interaction Layer
+│   │   │   ├── tool_registry.py    # Tool definitions
+│   │   │   ├── tools/
+│   │   │   │   ├── get_schema.py
+│   │   │   │   ├── sample_rows.py
+│   │   │   │   ├── search_docs.py
+│   │   │   │   ├── validate_sql.py
+│   │   │   │   └── execute_sql.py
+│   │   │   └── session.py          # Agent session management
+│   │   │
+│   │   ├── validation/             # Anti-Hallucination Layer
+│   │   │   ├── sql_parser.py       # AST extraction (sqlglot)
+│   │   │   ├── hallucination_detector.py
+│   │   │   ├── schema_validator.py
+│   │   │   └── join_path_verifier.py
+│   │   │
+│   │   ├── evaluation/             # Raw SQL Evaluation Layer
+│   │   │   ├── executor.py         # Raw SQL execution
+│   │   │   ├── comparators/        # Result comparison strategies
+│   │   │   │   ├── exact.py
+│   │   │   │   ├── set_based.py
+│   │   │   │   ├── fuzzy_numeric.py
+│   │   │   │   └── schema_only.py
+│   │   │   ├── scorer.py           # Multi-dimensional scoring
+│   │   │   └── query_analyzer.py   # EXPLAIN plan capture
+│   │   │
+│   │   ├── logging/                # Observability Layer
+│   │   │   ├── trace_logger.py     # Structured JSONL logging
+│   │   │   ├── error_taxonomy.py   # Auto-classification
+│   │   │   └── metrics.py          # Aggregated statistics
+│   │   │
+│   │   └── orchestrator/           # Task Orchestration
+│   │       ├── runner.py           # Main evaluation loop
+│   │       ├── environment.py      # Per-task env setup/teardown
+│   │       └── reporter.py         # Results aggregation
+│   │
+├── tasks/                          # Task Definitions
+│   ├── schemas/                    # JSON Schema definitions
+│   ├── fixtures/                   # Test data (Parquet/JSON)
+│   ├── tasks.yaml                  # Task registry
+│   └── gold_queries/               # Expected SQL solutions
+│
+├── docs/                           # External documentation corpus
+│   ├── bigquery/
+│   ├── snowflake/
+│   └── dialect_guides/
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+│
+└── scripts/
+    ├── setup_databases.py
+    ├── run_evaluation.py
+    └── generate_report.py
 ```
-
-## 🎯 Usage Examples
-
-### Web Interface
-1. Start server: `python3 agent_server.py`
-2. Open browser: http://localhost:5000
-3. Enter query and click "Execute Query"
-4. View validation, execution, and analysis results
-
-### CLI Interface
-```bash
-$ python3 agent_cli.py
-
-🔍 Enter SQL query: SELECT name, email FROM users WHERE age > 30
-
-🤖 SQL AGENT - Query Processing
-================================
-
-✅ Validation PASSED
-   - Query Type: Select
-   - Tables: users
-   - Columns: name, email, age
-
-✅ Execution SUCCESSFUL
-   - Rows returned: 3
-   - Execution time: 10.32ms
-
-📊 Analysis complete
-   - Query returned 3 row(s) with 2 column(s) in 10.32ms
-
-📄 Data Preview:
-Row 1: {'name': 'Bob Smith', 'email': 'bob@example.com'}
-Row 2: {'name': 'Charlie Brown', 'email': 'charlie@example.com'}
-Row 3: {'name': 'Diana Prince', 'email': 'diana@example.com'}
-```
-
-### Python API
-```python
-from sql_agent import SQLAgent
-
-# Initialize agent
-agent = SQLAgent("postgresql://testuser:testpass@localhost:5432/testdb")
-
-# Process query
-result = agent.process_query(
-    "SELECT u.name, COUNT(o.id) FROM users u JOIN orders o ON u.id = o.user_id GROUP BY u.name",
-    verbose=True
-)
-
-# Access results
-print(f"Status: {result['overall_status']}")
-print(f"Rows: {result['execution']['rows_returned']}")
-print(f"Time: {result['execution']['execution_time_ms']}ms")
-
-# Save report
-agent.save_report(result, "my_query_report.json")
-```
-
-## 🗄️ Database Connection
-
-### Default Configuration
-- **Host**: localhost
-- **Port**: 5432
-- **Database**: testdb
-- **Username**: testuser
-- **Password**: testpass
-- **Connection String**: `postgresql://testuser:testpass@localhost:5432/testdb`
-
-### Sample Schema
-```sql
--- Users table
-users (id, name, email, age, created_at)
-
--- Orders table
-orders (id, user_id, amount, status, created_at)
-
--- Products table
-products (id, name, price, stock, category)
-```
-
-## 🧪 Testing
-
-### Unit Tests (Mocked)
-```bash
-python3 test_hallucination.py
-```
-**Result**: 11/11 tests passed ✅
-
-### Integration Tests (Real Database)
-```bash
-python3 test_with_db.py
-```
-**Result**: 8/8 tests passed ✅
-
-### Test Coverage
-- ✅ Valid SELECT queries
-- ✅ JOIN queries with multiple tables
-- ✅ Aggregations (COUNT, SUM, AVG)
-- ✅ Subqueries
-- ✅ Invalid table detection
-- ✅ Invalid column detection
-- ✅ Unsafe operation blocking
-- ✅ Syntax error handling
-
-## 📊 Example Queries
-
-### ✅ Valid Queries
-
-**Simple SELECT:**
-```sql
-SELECT name, email FROM users WHERE age > 30
-```
-
-**JOIN with Aggregation:**
-```sql
-SELECT u.name, COUNT(o.id) as order_count, SUM(o.amount) as total_spent
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.name
-```
-
-**Subquery:**
-```sql
-SELECT name FROM users 
-WHERE id IN (SELECT user_id FROM orders WHERE amount > 100)
-```
-
-**Aggregation by Category:**
-```sql
-SELECT category, COUNT(*) as product_count, AVG(price) as avg_price
-FROM products
-GROUP BY category
-```
-
-### ❌ Rejected Queries
-
-**Unsafe DELETE:**
-```sql
-DELETE FROM users WHERE id = 1
--- Error: Unsafe operation detected: delete
-```
-
-**Invalid Table:**
-```sql
-SELECT * FROM invalid_table
--- Error: Invalid table invalid_table
-```
-
-**Invalid Column:**
-```sql
-SELECT invalid_column FROM users
--- Error: Invalid Column invalid_column
-```
-
-## 🐳 Docker Commands
-
-**Start database:**
-```bash
-docker-compose up -d
-```
-
-**Stop database:**
-```bash
-docker-compose down
-```
-
-**View logs:**
-```bash
-docker-compose logs -f postgres
-```
-
-**Connect to PostgreSQL CLI:**
-```bash
-docker exec -it hackathon_postgres psql -U testuser -d testdb
-```
-
-**Reset database (delete all data):**
-```bash
-docker-compose down -v
-docker-compose up -d
-```
-
-## 🔌 API Endpoints
-
-### POST /api/execute
-Execute a SQL query
-
-**Request:**
-```json
-{
-  "query": "SELECT * FROM users"
-}
-```
-
-**Response:**
-```json
-{
-  "query": "SELECT * FROM users",
-  "timestamp": "2025-12-12T19:40:05",
-  "validation": {
-    "is_valid": true,
-    "query_type": "Select",
-    "tables_accessed": ["users"],
-    "columns_accessed": ["*"]
-  },
-  "execution": {
-    "success": true,
-    "rows_returned": 4,
-    "execution_time_ms": 10.32,
-    "data": [...]
-  },
-  "analysis": {
-    "summary": "Query returned 4 row(s) with 5 column(s) in 10.32ms",
-    "insights": ["✅ Query executed very quickly"],
-    "data_preview": [...]
-  },
-  "overall_status": "SUCCESS"
-}
-```
-
-### GET /api/health
-Health check endpoint
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "database": "connected"
-}
-```
-
-## 🎨 Web Interface Features
-
-- **Beautiful gradient design** with animations
-- **Real-time query execution**
-- **Interactive example queries**
-- **Detailed validation feedback**
-- **Performance metrics**
-- **Data table preview**
-- **Insights and recommendations**
-- **Responsive design**
-
-## 📝 Output Report Format
-
-Each query generates a comprehensive JSON report:
-
-```json
-{
-  "query": "SELECT ...",
-  "timestamp": "2025-12-12T19:40:05",
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": [],
-    "query_type": "Select",
-    "tables_accessed": ["users"],
-    "columns_accessed": ["name", "email"]
-  },
-  "execution": {
-    "success": true,
-    "rows_returned": 3,
-    "columns": ["name", "email"],
-    "data": [...],
-    "execution_time_ms": 10.32,
-    "error": null
-  },
-  "analysis": {
-    "summary": "Query returned 3 row(s)...",
-    "insights": ["✅ Query executed very quickly"],
-    "data_preview": [...]
-  },
-  "overall_status": "SUCCESS"
-}
-```
-
-## 🛡️ Security Features
-
-- **Forbidden Operations**: Blocks DELETE, DROP, ALTER, TRUNCATE, INSERT, UPDATE, CREATE, GRANT, REVOKE, COPY
-- **Result Limits**: Automatic LIMIT clause (max 100 rows)
-- **Sandbox Execution**: Read-only query execution
-- **Schema Validation**: Prevents SQL injection via non-existent tables/columns
-- **Syntax Validation**: Catches malformed queries before execution
-
-## 🚦 Status Indicators
-
-- ✅ **SUCCESS** - Query validated and executed successfully
-- ❌ **FAILED** - Query failed validation or execution
-- ⚠️ **WARNING** - Query succeeded with warnings
-
-## 💡 Tips
-
-1. **Use the web interface** for the best visual experience
-2. **Try example queries** to understand capabilities
-3. **Check insights** for performance recommendations
-4. **Save reports** for documentation and debugging
-5. **Use CLI** for quick testing and automation
-
-## 🔧 Troubleshooting
-
-**Database connection failed:**
-```bash
-# Make sure Docker is running
-docker-compose up -d
-
-# Check container status
-docker ps
-```
-
-**Web server won't start:**
-```bash
-# Install dependencies
-pip3 install flask flask-cors sqlalchemy psycopg2-binary sqlglot
-
-# Check if port 5000 is available
-lsof -i :5000
-```
-
-**Query validation fails:**
-- Check table and column names match the schema
-- Ensure query syntax is valid PostgreSQL
-- Avoid forbidden operations (DELETE, DROP, etc.)
-
-## 📚 Dependencies
-
-- **sqlglot** - SQL parsing and optimization
-- **sqlalchemy** - Database ORM and connection
-- **psycopg2-binary** - PostgreSQL driver
-- **flask** - Web server framework
-- **flask-cors** - CORS support
-
-## 🎯 Use Cases
-
-1. **Query Validation** - Test SQL before production
-2. **Learning SQL** - Safe environment to practice
-3. **API Development** - Validate user-generated queries
-4. **Data Analysis** - Quick data exploration
-5. **Security Testing** - Prevent SQL injection
-6. **Performance Testing** - Measure query execution time
 
 ---
 
-**Built with ❤️ for safe and intelligent SQL query processing**
+## 🗄️ Supported Databases
 
+| Database   | SQLAlchemy Dialect    | Status     |
+| ---------- | --------------------- | ---------- |
+| PostgreSQL | `postgresql+psycopg2` | ✅ Core    |
+| SQLite     | `sqlite`              | ✅ Core    |
+| DuckDB     | `duckdb_engine`       | ✅ Core    |
+| BigQuery   | `bigquery`            | ✅ Cloud   |
+| Snowflake  | `snowflake`           | ✅ Cloud   |
+| ClickHouse | `clickhouse`          | 🔄 Planned |
+
+---
+
+## 🔄 Evaluation Flow
+
+```
+1. LOAD TASK
+   └── Parse task definition (question, schema, expected output, difficulty)
+
+2. SETUP ENVIRONMENT (ORM Layer)
+   ├── Create database/schema
+   ├── Load fixtures via FixtureLoader
+   └── Snapshot schema via SchemaInspector
+
+3. AGENT INTERACTION (Sandbox)
+   ├── Agent calls GetSchema() → ORM introspection
+   ├── Agent calls SampleRows(table) → ORM query
+   ├── Agent calls ValidateSQL(sql) → HallucinationDetector
+   │   └── Pre-execution validation against schema snapshot
+   └── Agent submits final SQL
+
+4. EXECUTION (Raw SQL Layer)
+   ├── Execute agent SQL verbatim: connection.execute(text(sql))
+   ├── Capture timing, query plan, result set
+   └── Execute gold SQL for comparison
+
+5. EVALUATION (Scorer)
+   ├── Compare results via selected Comparator
+   ├── Calculate hallucination penalty
+   ├── Compute efficiency score
+   └── Aggregate multi-dimensional score
+
+6. LOGGING (Observability)
+   ├── Write structured trace (JSONL)
+   ├── Classify errors into taxonomy
+   └── Update aggregate metrics
+
+7. TEARDOWN (ORM Layer)
+   └── Rollback/drop test database
+```
+
+---
+
+## 📊 Error Taxonomy
+
+| Category           | Description                      | Detection Method               |
+| ------------------ | -------------------------------- | ------------------------------ |
+| `SCHEMA_LINK`      | Wrong table/column selected      | SchemaValidator mismatch       |
+| `JOIN_ERROR`       | Incorrect join path or condition | JoinPathVerifier + result diff |
+| `SYNTAX_ERROR`     | SQL parse failure                | sqlglot parse exception        |
+| `GROUNDING_ERROR`  | Phantom column/table/function    | HallucinationDetector          |
+| `TRUNCATION_ERROR` | Context window overflow          | Token count monitoring         |
+| `DATA_ANALYSIS`    | Wrong aggregation/filter logic   | Result comparison failure      |
+| `DOC_MISINTERPRET` | Dialect syntax confusion         | Dialect-specific pattern match |
+
+---
+
+## 🆚 Comparison with Spider 2.0
+
+| Dimension                   | Spider 2.0            | AgentX                                                                | Improvement             |
+| --------------------------- | --------------------- | --------------------------------------------------------------------- | ----------------------- |
+| **Hallucination Detection** | Post-execution only   | Pre-execution schema validation                                       | Structural prevention   |
+| **Scoring**                 | Binary pass/fail      | Multi-dimensional (correctness, hallucination, efficiency, grounding) | Root-cause visibility   |
+| **Dialect Management**      | Separate handling     | Unified SQLAlchemy abstraction                                        | Maintainability         |
+| **Fixture Reproducibility** | Not specified         | ORM models + transactional rollback                                   | Deterministic isolation |
+| **Error Analysis**          | Manual categorization | Automated taxonomy classification                                     | Scalable analysis       |
+| **Nested Types**            | Major failure mode    | Hybrid introspection (ORM + INFORMATION_SCHEMA)                       | Enterprise support      |
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# Clone repository
+git clone https://github.com/ashcastelinocs124/AgentX-Hackathon.git
+cd AgentX-Hackathon
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Start local databases
+docker-compose up -d
+
+# Run evaluation
+python scripts/run_evaluation.py --tasks tasks/tasks.yaml --agent your_agent
+```
+
+---
+
+## 📅 Implementation Roadmap
+
+### Phase 1: Foundation & Database Infrastructure (Weeks 1-2)
+
+- `DatabaseManager` with SQLAlchemy engine factory
+- PostgreSQL, SQLite, DuckDB support
+- Docker Compose for local databases
+- Configuration system
+
+### Phase 2: Schema Introspection & Fixtures (Weeks 3-4)
+
+- `SchemaInspector` using `sqlalchemy.inspect()`
+- Hybrid introspection for nested types
+- `FixtureLoader` with tiered loading
+- Transactional setup/teardown
+
+### Phase 3: Hallucination Detection (Weeks 5-6)
+
+- SQL AST parser using `sqlglot`
+- `SchemaValidator` and `HallucinationDetector`
+- `JoinPathVerifier`
+
+### Phase 4: Agent Sandbox (Weeks 7-8)
+
+- Tool protocol definition
+- GetSchema, SampleRows, ValidateSQL, ExecuteSQL tools
+- Session management
+
+### Phase 5: Evaluation Pipeline (Weeks 9-11)
+
+- Raw SQL executor
+- Result comparators (exact, set, fuzzy, schema-only)
+- Multi-dimensional scorer
+- Structured logging and error taxonomy
+
+### Phase 6: Cloud & Advanced (Weeks 12-14)
+
+- BigQuery and Snowflake dialects
+- Cost estimation scoring
+- dbt project introspection
+- Metrics dashboard
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please read our contributing guidelines before submitting PRs.
+
+### Development Setup
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+
+# Run linting
+ruff check src/
+```
+
+---
+
+## 📚 References
+
+- [Spider 2.0 Paper](https://arxiv.org/abs/2411.07763)
+- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
+- [sqlglot Documentation](https://sqlglot.com/)
