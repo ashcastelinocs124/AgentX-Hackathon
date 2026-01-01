@@ -387,6 +387,123 @@ leaderboard = client.get_leaderboard()
 
 ---
 
+## Benchmark Runner
+
+AgentX includes a comprehensive benchmark runner for batch evaluation with metrics export.
+
+### Run Benchmarks
+
+```bash
+# Run all benchmarks with default settings
+python run_benchmark.py --output results/
+
+# Filter by difficulty level
+python run_benchmark.py --difficulty easy,medium --output results/
+
+# Filter by tags
+python run_benchmark.py --tags join,aggregation --output results/
+
+# Export in multiple formats
+python run_benchmark.py --format json,csv,summary,html --output results/
+
+# Custom task file
+python run_benchmark.py --tasks path/to/tasks.json --output results/
+```
+
+### Output Formats
+
+| Format | Description | File |
+|--------|-------------|------|
+| `json` | Full structured report with all details | `benchmark_{id}.json` |
+| `csv` | Tabular results for spreadsheets | `benchmark_{id}.csv` |
+| `summary` | Human-readable text summary | `benchmark_{id}_summary.txt` |
+| `html` | Interactive HTML report with visualizations | `benchmark_{id}.html` |
+
+### Example Output
+
+```
+============================================================
+AGENTX BENCHMARK RUN: bedcb09c
+============================================================
+Tasks: 17
+Difficulties: ['easy', 'medium']
+Dialect: sqlite
+============================================================
+
+[1/17] sqlite_simple_select (easy)... ✓ 87.6%
+[2/17] sqlite_count (easy)... ✓ 77.1%
+[3/17] sqlite_join (medium)... ✓ 99.8%
+...
+
+RESULTS SUMMARY
+----------------------------------------
+Total Tasks:  17
+Successful:   16
+Failed:       1
+
+SCORES
+----------------------------------------
+Average:  94.40%
+Median:   96.00%
+Min:      77.10%
+Max:      100.00%
+
+SCORES BY DIMENSION
+----------------------------------------
+  correctness         : 86.82%
+  efficiency          : 100.00%
+  safety              : 100.00%
+
+SCORES BY DIFFICULTY
+----------------------------------------
+  easy        : 92.65% (n=10)
+  medium      : 97.31% (n=6)
+```
+
+### Programmatic Usage
+
+```python
+from run_benchmark import BenchmarkRunner, BenchmarkConfig, MetricsExporter
+
+# Configure benchmark
+config = BenchmarkConfig(
+    output_dir="results",
+    difficulties=["easy", "medium"],
+    formats=["json", "csv", "html"],
+    dialect="sqlite",
+)
+
+# Run benchmark
+runner = BenchmarkRunner(config)
+report = runner.run()
+
+# Export results
+exporter = MetricsExporter(config.output_dir)
+outputs = exporter.export(report, config.formats)
+
+# Access results programmatically
+print(f"Average Score: {report.average_score:.2%}")
+print(f"Successful: {report.successful}/{report.total_tasks}")
+
+for result in report.results:
+    print(f"{result.task_id}: {result.overall_score:.2%}")
+```
+
+### Custom Agent Integration
+
+```python
+def my_llm_generate_sql(task):
+    """Your LLM agent that generates SQL from task description."""
+    # Call your LLM here
+    return f"SELECT * FROM customers"
+
+# Run benchmark with your agent
+runner = BenchmarkRunner(config)
+report = runner.run(sql_generator=my_llm_generate_sql)
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -423,7 +540,14 @@ AgentX-Hackathon/
 ├── docker-compose.yml             # Multi-service orchestration
 │
 ├── run_evaluation_pipeline.py     # CLI entry point
+├── run_benchmark.py               # Benchmark runner with metrics export
 ├── requirements.txt               # Dependencies
+│
+├── tasks/                         # Benchmark tasks
+│   └── gold_queries/              # Gold standard SQL queries
+│       └── sqlite/basic_queries.json  # 27 tasks with expected results
+│
+├── results/                       # Benchmark output directory
 │
 ├── test_multi_dialect.py          # Multi-dialect tests
 ├── test_enhanced_scoring.py       # Scoring component tests
