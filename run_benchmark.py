@@ -46,6 +46,7 @@ class BenchmarkConfig:
     dialect: str = "sqlite"
     timeout: float = 30.0
     verbose: bool = False
+    schema: str = "basic"  # "basic" or "enterprise"
 
 
 @dataclass
@@ -152,10 +153,16 @@ class BenchmarkRunner:
         """Load benchmark tasks from JSON."""
         tasks_path = self.config.tasks_path
         if not tasks_path:
-            tasks_path = os.path.join(
-                os.path.dirname(__file__),
-                "tasks", "gold_queries", "sqlite", "basic_queries.json"
-            )
+            if self.config.schema == "enterprise":
+                tasks_path = os.path.join(
+                    os.path.dirname(__file__),
+                    "tasks", "gold_queries", "sqlite", "enterprise_queries.json"
+                )
+            else:
+                tasks_path = os.path.join(
+                    os.path.dirname(__file__),
+                    "tasks", "gold_queries", "sqlite", "basic_queries.json"
+                )
 
         with open(tasks_path, 'r') as f:
             all_tasks = json.load(f)
@@ -174,7 +181,7 @@ class BenchmarkRunner:
             ]
 
         if self.config.verbose:
-            print(f"Loaded {len(self.tasks)} tasks")
+            print(f"Loaded {len(self.tasks)} tasks from {tasks_path}")
 
     def run(self, sql_generator: Optional[Callable[[Dict], str]] = None) -> BenchmarkReport:
         """
@@ -195,6 +202,7 @@ class BenchmarkRunner:
         print(f"\n{'='*60}")
         print(f"AGENTX BENCHMARK RUN: {benchmark_id}")
         print(f"{'='*60}")
+        print(f"Schema: {self.config.schema.upper()}")
         print(f"Tasks: {len(self.tasks)}")
         print(f"Difficulties: {self.config.difficulties}")
         print(f"Dialect: {self.config.dialect}")
@@ -330,6 +338,13 @@ class BenchmarkRunner:
 
     def _setup_sample_data(self, executor):
         """Setup sample data for evaluation."""
+        if self.config.schema == "enterprise":
+            self._setup_enterprise_data(executor)
+        else:
+            self._setup_basic_data(executor)
+
+    def _setup_basic_data(self, executor):
+        """Setup basic sample data for evaluation."""
         # Create customers table
         executor.adapter.execute("""
             CREATE TABLE IF NOT EXISTS customers (
@@ -388,6 +403,11 @@ class BenchmarkRunner:
                 pass
 
         executor.refresh_schema()
+
+    def _setup_enterprise_data(self, executor):
+        """Setup enterprise schema with star schema and comprehensive data."""
+        from tasks.enterprise_schema import setup_enterprise_schema
+        setup_enterprise_schema(executor)
 
     def _build_report(
         self,
@@ -759,6 +779,12 @@ Examples:
 
   # Filter by tags
   python run_benchmark.py --tags join,aggregation --output results/
+
+  # Run enterprise benchmark (star schema, complex queries)
+  python run_benchmark.py --schema enterprise --output results/
+
+  # Run enterprise with specific tags
+  python run_benchmark.py --schema enterprise --tags star_schema,window --output results/
 """
     )
 
@@ -771,6 +797,8 @@ Examples:
     parser.add_argument("--format", "-f", default="json,csv,summary",
                         help="Comma-separated output formats (json,csv,summary,html)")
     parser.add_argument("--dialect", default="sqlite", help="SQL dialect")
+    parser.add_argument("--schema", "-s", default="basic", choices=["basic", "enterprise"],
+                        help="Schema type: basic (simple tables) or enterprise (star schema)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
@@ -784,6 +812,7 @@ Examples:
         formats=args.format.split(","),
         dialect=args.dialect,
         verbose=args.verbose,
+        schema=args.schema,
     )
 
     # Run benchmark
