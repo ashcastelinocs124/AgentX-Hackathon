@@ -163,6 +163,7 @@ def setup_enterprise_schema(executor):
             quantity INTEGER,
             unit_price REAL,
             cost_amount REAL,
+            order_date TEXT,
             load_timestamp TEXT,
             FOREIGN KEY (customer_id) REFERENCES dim_customer(customer_id),
             FOREIGN KEY (product_id) REFERENCES dim_product(product_id),
@@ -177,12 +178,20 @@ def setup_enterprise_schema(executor):
             order_id INTEGER PRIMARY KEY,
             customer_id INTEGER,
             product_id TEXT,
+            store_id INTEGER,
+            date_id INTEGER,
+            promotion_id INTEGER,
             order_date TEXT,
             total_amount REAL,
             cost_amount REAL,
             quantity INTEGER,
+            unit_price REAL,
             status TEXT,
-            load_timestamp TEXT
+            load_timestamp TEXT,
+            FOREIGN KEY (customer_id) REFERENCES dim_customer(customer_id),
+            FOREIGN KEY (product_id) REFERENCES dim_product(product_id),
+            FOREIGN KEY (store_id) REFERENCES dim_store(store_id),
+            FOREIGN KEY (date_id) REFERENCES dim_date(date_id)
         )
     """)
 
@@ -433,6 +442,7 @@ def _insert_sample_data(adapter):
         day_offset = random.randint(0, 300)
         sale_date = datetime(2024, 1, 1) + timedelta(days=day_offset)
         date_id = int(sale_date.strftime('%Y%m%d'))
+        order_date = sale_date.strftime('%Y-%m-%d')
 
         promotion_id = random.choice([None, 1, 2, 3, 4])
         quantity = random.randint(1, 10)
@@ -443,25 +453,31 @@ def _insert_sample_data(adapter):
         load_timestamp = load_date.strftime('%Y-%m-%d %H:%M:%S')
 
         promo_val = promotion_id if promotion_id else "NULL"
-        adapter.execute(f"INSERT INTO sales_fact VALUES ({i}, {tenant_id}, {customer_id}, '{product_id}', {store_id}, {date_id}, {promo_val}, {quantity}, {unit_price}, {cost}, '{load_timestamp}')")
+        adapter.execute(f"INSERT INTO sales_fact VALUES ({i}, {tenant_id}, {customer_id}, '{product_id}', {store_id}, {date_id}, {promo_val}, {quantity}, {unit_price}, {cost}, '{order_date}', '{load_timestamp}')")
 
     # Orders Fact (300 orders)
     for i in range(1, 301):
         customer_id = random.randint(1, 50)
         product_id = f"PROD{random.randint(1, 30):03d}"
+        store_id = random.randint(1, 5)
 
         day_offset = random.randint(0, 300)
-        order_date = (datetime(2024, 1, 1) + timedelta(days=day_offset)).strftime('%Y-%m-%d')
+        order_datetime = datetime(2024, 1, 1) + timedelta(days=day_offset)
+        order_date = order_datetime.strftime('%Y-%m-%d')
+        date_id = int(order_datetime.strftime('%Y%m%d'))
 
-        total = round(20 + random.random() * 500, 2)
-        cost = round(total * 0.65, 2)
+        promotion_id = random.choice([None, 1, 2, 3, 4])
         quantity = random.randint(1, 5)
+        unit_price = round(20 + random.random() * 100, 2)
+        total = round(unit_price * quantity, 2)
+        cost = round(total * 0.65, 2)
         status = random.choice(['completed', 'completed', 'completed', 'pending', 'cancelled'])
 
-        load_date = datetime.strptime(order_date, '%Y-%m-%d') + timedelta(days=random.choice([0, 0, 1, 3]))
+        load_date = order_datetime + timedelta(days=random.choice([0, 0, 1, 3]))
         load_timestamp = load_date.strftime('%Y-%m-%d %H:%M:%S')
 
-        adapter.execute(f"INSERT INTO orders_fact VALUES ({i}, {customer_id}, '{product_id}', '{order_date}', {total}, {cost}, {quantity}, '{status}', '{load_timestamp}')")
+        promo_val = promotion_id if promotion_id else "NULL"
+        adapter.execute(f"INSERT INTO orders_fact VALUES ({i}, {customer_id}, '{product_id}', {store_id}, {date_id}, {promo_val}, '{order_date}', {total}, {cost}, {quantity}, {unit_price}, '{status}', '{load_timestamp}')")
 
     # User Events (for funnel and sessions)
     event_types = ['page_view', 'add_to_cart', 'checkout', 'purchase']
